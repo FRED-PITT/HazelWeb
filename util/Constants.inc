@@ -15,13 +15,14 @@ class Constants {
   const DOJO_CDM = '//ajax.googleapis.com/ajax/libs/dojo/1.10.4/';
   
   const WHERE_IS_DOJO = 'js/vendor/';
-  const WHERE_IS_FREDWEB_API = 'http://localhost/fredweb/api/';
+  //const WHERE_IS_FREDWEB_API = 'http://localhost/fredweb/api/';
+  const WHERE_IS_FREDWEB_API = 'http://fred.publichealth.pitt.edu/fredweb/api/';
    
   const DEFAULT_TZ = 'America/New_York';
   const MYSQL_TIMESTAMP_FORMAT = 'Y-m-d G:i:s';
 
   //const RESULTS_DIR = '/storage/fred_navigator_web/RESULTS/';
-  const RESULTS_DIR = '/Users/ddg5/storage/FredNavigatorWeb/RESULTS/';
+  //const RESULTS_DIR = '/Users/ddg5/storage/FredNavigatorWeb/RESULTS/';
   const FEEDBACK_MAILTO = 'ddg5@pitt.edu';
   
   static $display_variable = array('S', 'E', 'I', 'R', 'AR');

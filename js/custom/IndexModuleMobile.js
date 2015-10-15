@@ -16,7 +16,7 @@
  */
 
 /**
- * IndexModule.js 
+ * IndexModuleMobile.js 
  * 
  * This is a custom module that will be used for the page index.php
  */
@@ -26,11 +26,11 @@
 require([
     "dojo/ready",    
     "dojo/dom",
+    "dojo/_base/window",
     "dijit/registry",
     "dojo/query",
     "dijit/layout/ContentPane",
     "dijit/form/Button",
-    "dijit/ProgressBar",
     "dojo/on",
     "dojo/request", 
     "dojo/json",
@@ -45,49 +45,23 @@ require([
     "dojo/store/Observable", 
     "dojo/store/Memory",
     "dojox/charting/StoreSeries",
-    "dojo/sniff",
-    "dojo/dom-style",
+    "dojox/mobile/ProgressIndicator",
     "dojo/domReady!"
   ], 
-  function(ready, dom, registry, query, ContentPane, Button, ProgressBar, on, request, JSON, arrayUtil,
-          Chart, Default, Lines, theme, Magnify, Tooltip, Legend, ObservableStore, MemoryStore, StoreSeries, has, domStyle) {
+  function(ready, dom, win, registry, query, ContentPane, Button, on, request, JSON, arrayUtil,
+          Chart, Default, Lines, theme, Magnify, Tooltip, Legend, ObservableStore, MemoryStore, StoreSeries, ProgressIndicator) {
   
     /*
      * These are variables that are static throughout the program execution. They might be set on an initial load, but they will not change 
      * after that
      */
     var glConst = {
-      chartVarArray: ["Seek_hc", "Primary_hc_unav", "Hc_unav", "Hc_accep_ins_unav", "Tot_res_stayed", "Tot_res_evac", "Open_hosp", "Closed_hosp", "Open_hosp_cap",
-                      "HTN_hc_unav", "Diabetes_hc_unav", "Asthma_hc_unav", "Medicaid_unav", "Medicare_unav", "Private_unav", "Uninsured_unav"],
-      glApiURL: "",
-      glMouseWheelEvtName: (!has("mozilla") ? "mousewheel" : "DOMMouseScroll"),
-      glGraph: {
-        hc_avail_chrt: {
-          y_min: -100,
-          y_max: 1500
-        },
-        patnt_evac_chrt: {
-          y_min: -10000,
-          y_max: 120000
-        },
-        practices_chrt: {
-          y_min: -10,
-          y_max: 70
-        },
-        open_practice_cap_chrt: {
-          y_min: -100,
-          y_max: 1200
-        },
-        chronic_cndtn_patnt_chrt: {
-          y_min: -50,
-          y_max: 600
-        },
-        hc_insrnc_patnt_chrt: {
-          y_min: -50,
-          y_max: 400
-        }
-      }
+      chartVarArray: ["Seek_hc", "Primary_hc_unav", "Hc_unav", "Tot_res_stayed", "Tot_res_evac", "Open_hosp", "Closed_hosp", "Open_hosp_cap",
+                      "ER_visit", "HTN_hc_unav", "Diabetes_hc_unav", "Asthma_hc_unav", "Medicaid_unav", "Medicare_unav", "Private_unav", "Uninsured_unav"],
+      glApiURL: ""
     };
+    
+    var glRadBtnIdArray = ["rb_baseline", "rb_50pct", "rb_6vans_actual", "rb_6vans_deficit_based", "rb_6vans_population_based"];
     
     var glIdToLabelMap = {
       rb_baseline: "Baseline",
@@ -95,19 +69,19 @@ require([
       rb_6vans_actual: "Activate&nbsp;6&nbsp;Vans&nbsp;<span style=\"font-style: italic;\">(Actual Locations)</span>",
       rb_6vans_deficit_based: "Activate&nbsp;6&nbsp;Vans&nbsp;<span style=\"font-style: italic;\">(Deficit-based)</span>",
       rb_6vans_population_based: "Activate&nbsp;6&nbsp;Vans&nbsp;<span style=\"font-style: italic;\">(Population-based)</span>"
-    }
+    };
     
     //Global chart data
     var glDataArr = {
       Seek_hc: [], 
       Primary_hc_unav: [], 
       Hc_unav: [], 
-      Hc_accep_ins_unav: [],
       Tot_res_stayed: [],
       Tot_res_evac: [], 
       Open_hosp: [], 
       Closed_hosp: [], 
       Open_hosp_cap: [],
+      ER_visit: [],
       HTN_hc_unav: [], 
       Diabetes_hc_unav: [],
       Asthma_hc_unav: [], 
@@ -121,12 +95,12 @@ require([
       Seek_hc: null,
       Primary_hc_unav: null,
       Hc_unav: null,
-      Hc_accep_ins_unav: null,
       Tot_res_stayed: null,
       Tot_res_evac: null,
       Open_hosp: null,
       Closed_hosp: null, 
       Open_hosp_cap: null,
+      ER_visit: null,
       HTN_hc_unav: null, 
       Diabetes_hc_unav: null,
       Asthma_hc_unav: null, 
@@ -151,8 +125,8 @@ require([
     
     var glHcAvailChart;
     
-    var glIsTabHealthcareDemandDrawn = false;
-    var glIsTabPracticesDrawn = false;
+    var glIsHealthcareDemandDrawn = false;
+    var glIsPracticesDrawn = false;
     var glIsAdditionalInformationDrawn = false
     var glApiURL = "";
   
@@ -177,47 +151,12 @@ require([
       return r;
     };
     
-    var findWebRunIdAndGetDataFromAJAXRequest = function(jsonParams) {
-      // Request the JSON data from the server
-      request.post(glConst.glApiURL + "submission", {
-        data: JSON.stringify(jsonParams),
-        method: "POST",
-        handleAs: "json"        
-      }).then(
-        function(data) {         
-          if(data && data.submission) {
-            //Now use the returned web_run_id to get the AJAX data
-            getDataFromAJAXRequest(data.submission.web_run_id, glConst.chartVarArray);
-          } else if(data.error) {
-            console.log(JSON.stringify(data.error));
-          } 
-        },
-        function(error) {
-          // Display the error returned
-          console.log("Error [" + error + "]");
-        }
-      )
-    };
-    
     var getDataFromAJAXRequest = function(runKey, varArr) {
+      var prog = ProgressIndicator.getInstance();
       
-      var myProgressBar;          
-      var accrdnCntnr = registry.byId("left_accrdn_cntnr");
-      var temp = accrdnCntnr.get("selectedChildWidget");
-
-      if(temp === registry.byId("cntnt_pn_slct_scnrio")) {
-        myProgressBar = registry.byId("prgrss_bar_selected_scenario");
-      } else if(temp === registry.byId("cntnt_pn_chs_scnrio")) {
-        myProgressBar = registry.byId("prgrss_bar_selected_chsn_scenario");  
-      } else {
-        myProgressBar = null;
-      }
-
-      if(myProgressBar) {
-        myProgressBar.set("value", 0);
-        myProgressBar.set("style", "visibility: visible;");       
-      }
-           
+      win.body().appendChild(prog.domNode);
+      prog.start(); // start the progress indicator
+            
       var varString = "";
       for(var i = 0; i < varArr.length; ++i) {
         if(i + 1 < varArr.length) {
@@ -236,114 +175,77 @@ require([
         handleAs: "json"
       }).then(
         function(data) {
-          var html = "<h2>JSON Data</h2>";
+          var html = "";
           if(data.result && data.result.line_plot_data) {
             // Display the data sent from the server
             html += "<p><pre>" + JSON.stringify(data.result.line_plot_data, null, 2) + "</pre></p>"; 
             resultDiv.innerHTML = html;
-            arrayUtil.forEach(getArrayKeys(data.result.line_plot_data), function(varName, index) {                              
+            arrayUtil.forEach(getArrayKeys(data.result.line_plot_data), function(varName, index) {             
               arrayUtil.forEach(data.result.line_plot_data[varName], function(item, i) {
                 var obj = new Object();
                 obj.day = parseInt(item.day);
-                obj.mean = parseFloat(item.mean);                
+                obj.mean = parseFloat(item.mean);
+                
                 glDataStore[varName].put(obj, {overwrite: true});
               });
             });
-
-            //Update the data on the chart on the current tab page
-            var tabContainer = registry.byId('center_tab_cntnr');
             
-            if(tabContainer.selectedChildWidget === registry.byId("tab_panel_hc_demand")) {
-              makeHealthcareDemandTabCharts();
-            } else if(tabContainer.selectedChildWidget === registry.byId("tab_panel_practices")) {
-              makePracticeTabCharts();
-            } else if(tabContainer.selectedChildWidget === registry.byId("tab_panel_individual")) {
-              makeAdditionalInformationTabCharts();
-            }  
+            makeHealthcareDemandCharts();
+            makePracticeCharts();
+            makeAdditionalInformationCharts();
             
-            // Another Request the JSON data from the server for the video url
-            request.get(glConst.glApiURL + "result/movie/" + runKey + "?v=hc_deficit", {
-              // Parse data from JSON to a JavaScript object
-              handleAs: "json"
-            }).then(
-              function(data) {
-                if(data.result && data.result.video_url) {
-                  var videoTag = dom.byId("simulation_video");
-                  videoTag.src = data.result.video_url;
-                } else if(data.error) {
-                  console.log(JSON.stringify(data.error, null, 2));
-                }          
-              },
-              function(error) {
-                console.log(error);
-              }
-            );
           } else if(data.error) {
-            console.log(JSON.stringify(data.error, null, 2));
-          }          
+            console.log(JSON.stringify(data.error));
+          } 
+          prog.stop();
         },
         function(error) {
           // Display the error returned
           resultDiv.innerHTML = error;
+          prog.stop();
         }
-      ).then(
-        function(data) {
-          var maxVal = 100;
-          function updateProgressBar() {
-            var curVal = myProgressBar.get("value");
-            curVal += 10;
-            if(curVal <= maxVal) {
-              myProgressBar.set({value: curVal});
-            } else {
-              clearInterval(intervalId);
-              myProgressBar.set("style", "visibility: hidden;");
-            }         
-          }
-          var intervalId = setInterval(updateProgressBar, 100);
-        }
-      );  
+      ); 
     }; 
     
-    var makeHealthcareDemandTabCharts = function() {
-      if(!glIsTabHealthcareDemandDrawn) {        
+ 
+    var makeHealthcareDemandCharts = function() {
+      if(!glIsHealthcareDemandDrawn) {        
         /*
          * Patient Healthcare Availability Chart
          */
-        hcAvailChart = new Chart("hc_avail_chrt");
-        hcAvailChart.setTheme(theme);
-        hcAvailChart.addPlot("default", {
+        glHcAvailChart = new Chart("hc_avail_chrt");
+        glHcAvailChart.setTheme(theme);
+        glHcAvailChart.addPlot("default", {
           type: Lines,
           markers: true,
           tension: "X",
           gap: 1
         });
-        hcAvailChart.addAxis("x", {
+        glHcAvailChart.addAxis("x", {
           title: "Day",
           leftBottom: true,
           natural: true,
           fixed: true,
           titleOrientation: "away",
         });
-        hcAvailChart.addAxis("y", {
+        glHcAvailChart.addAxis("y", {
           title: "Individuals",
           vertical: true,
           leftBottom: true,
           natural: false,
           fixed: true,
-          min: glConst.glGraph.hc_avail_chrt.y_min,
-          max: glConst.glGraph.hc_avail_chrt.y_max
         });
       
-        hcAvailChart.addSeries("Seeking Healthcare", new StoreSeries(glDataStore.Seek_hc, { query: {} }, "mean"));
-        //glHcAvailChart.addSeries("Primary Care Unavailable", new StoreSeries(glDataStore.Primary_hc_unav, { query: {} }, "mean"));
-        hcAvailChart.addSeries("Healthcare Unavailable", new StoreSeries(glDataStore.Hc_accep_ins_unav, { query: {} }, "mean"));
+        glHcAvailChart.addSeries("Seeking Healthcare", new StoreSeries(glDataStore.Seek_hc, { query: {} }, "mean"));
+        glHcAvailChart.addSeries("Primary Care Unavailable", new StoreSeries(glDataStore.Primary_hc_unav, { query: {} }, "mean"));
+        glHcAvailChart.addSeries("Healthcare Unavailable", new StoreSeries(glDataStore.Hc_unav, { query: {} }, "mean"));
         
-        new Magnify(hcAvailChart);
-        new Tooltip(hcAvailChart); 
+        new Magnify(glHcAvailChart);
+        new Tooltip(glHcAvailChart);      
+        glHcAvailChart.render();
         
-        hcAvailChart.render();
-        var hcAvailChartLegend = new Legend({chart: hcAvailChart}, "hc_avail_chrt_legend");        
-              
+        var hcAvailChartLegend = new Legend({chart: glHcAvailChart}, "hc_avail_chrt_legend");
+        
         /*
          * Patient Evacuation Status Chart
          */
@@ -360,7 +262,7 @@ require([
           leftBottom: true,
           natural: true,
           fixed: true,
-          titleOrientation: "away"
+          titleOrientation: "away",
         });
         patntEvacChart.addAxis("y", {
           title: "Individuals",
@@ -368,8 +270,6 @@ require([
           leftBottom: true,
           natural: false,
           fixed: true,
-          min: glConst.glGraph.patnt_evac_chrt.y_min,
-          max: glConst.glGraph.patnt_evac_chrt.y_max
         });      
         
         patntEvacChart.addSeries("Residents Staying", new StoreSeries(glDataStore.Tot_res_stayed, { query: {} }, "mean"));
@@ -378,14 +278,18 @@ require([
         new Magnify(patntEvacChart);
         new Tooltip(patntEvacChart);      
         patntEvacChart.render();
-
+        
+        var patntEvacChartLegend = registry.byId("patnt_evac_chrt_legend");
+        if(patntEvacChartLegend != undefined) {
+          patntEvacChartLegend.destroyRecursive(true);
+        }
         var patntEvacChartLegend = new Legend({chart: patntEvacChart}, "patnt_evac_chrt_legend");
-        glIsTabHealthcareDemandDrawn = true;
+        glIsHealthcareDemandDrawn = true;
       }
     };  
     
-    makePracticeTabCharts = function() {
-      if(!glIsTabPracticesDrawn) {           
+    makePracticeCharts = function() {
+      if(!glIsPracticesDrawn) {           
         /*
          * Practices Chart
          */
@@ -402,7 +306,7 @@ require([
           leftBottom: true,
           natural: true,
           fixed: true,
-          titleOrientation: "away"
+          titleOrientation: "away",
         });
         practicesChart.addAxis("y", {
           title: "Practices",
@@ -410,8 +314,6 @@ require([
           leftBottom: true,
           natural: false,
           fixed: true,
-          min: glConst.glGraph.practices_chrt.y_min,
-          max: glConst.glGraph.practices_chrt.y_max
         });
         
         practicesChart.addSeries("Open", new StoreSeries(glDataStore.Open_hosp, { query: {} }, "mean"));
@@ -420,8 +322,9 @@ require([
         new Magnify(practicesChart);
         new Tooltip(practicesChart);      
         practicesChart.render();
-        var practicesChartLegend = new Legend({chart: practicesChart}, "practices_chrt_legend");        
-       
+        var practicesChartLegend = new Legend({chart: practicesChart}, "practices_chrt_legend");
+
+        
         /*
          * Open Practices Capacity Chart
          */
@@ -438,7 +341,7 @@ require([
           leftBottom: true,
           natural: true,
           fixed: true,
-          titleOrientation: "away"
+          titleOrientation: "away",
         });
         practicesCapChart.addAxis("y", {
           title: "Individuals",
@@ -446,8 +349,6 @@ require([
           leftBottom: true,
           natural: false,
           fixed: true,
-          min: glConst.glGraph.open_practice_cap_chrt.y_min,
-          max: glConst.glGraph.open_practice_cap_chrt.y_max
         });
         
         practicesCapChart.addSeries("Open Practice Capacity", new StoreSeries(glDataStore.Open_hosp_cap, { query: {} }, "mean"));
@@ -456,15 +357,46 @@ require([
         new Magnify(practicesCapChart);
         new Tooltip(practicesCapChart);      
         practicesCapChart.render();
-        var practicesCapChartLegend = new Legend({chart: practicesCapChart}, "open_practice_cap_chrt_legend");  
-        
-        glIsTabPracticesDrawn = true;
+        var practicesCapChartLegend = new Legend({chart: practicesCapChart}, "open_practice_cap_chrt_legend");
+        glIsPracticesDrawn = true;
       }   
     }; 
     
-    makeAdditionalInformationTabCharts = function() {
+    makeAdditionalInformationCharts = function() {
       if(!glIsAdditionalInformationDrawn) {           
-         
+        /*
+         * Emergency Visits Chart
+         */
+        var emergencyVisitChart = new dojox.charting.Chart("emrgnc_vst_chrt");
+        emergencyVisitChart.setTheme(theme);
+        emergencyVisitChart.addPlot("default", {
+          type: Lines,
+          markers: true,
+          tension: "X",
+          gap: 1
+        });
+        emergencyVisitChart.addAxis("x", {
+          title: "Day",
+          leftBottom: true,
+          natural: true,
+          fixed: true,
+          titleOrientation: "away",
+        });
+        emergencyVisitChart.addAxis("y", {
+          title: "Individuals",
+          vertical: true,
+          leftBottom: true,
+          natural: false,
+          fixed: true,
+        });
+        
+        emergencyVisitChart.addSeries("ER Visits", new StoreSeries(glDataStore.ER_visit, { query: {} }, "mean"));
+        
+        new Magnify(emergencyVisitChart);
+        new Tooltip(emergencyVisitChart);      
+        emergencyVisitChart.render();
+        var emergencyVisitChartLegend = new Legend({chart: emergencyVisitChart}, "emrgnc_vst_chrt_legend");
+   
         /*
          * Chronic Condition Patient Chart
          */
@@ -481,7 +413,7 @@ require([
           leftBottom: true,
           natural: true,
           fixed: true,
-          titleOrientation: "away"
+          titleOrientation: "away",
         });
         chronicCndtnPatntChart.addAxis("y", {
           title: "Individuals",
@@ -489,8 +421,6 @@ require([
           leftBottom: true,
           natural: false,
           fixed: true,
-          min: glConst.glGraph.chronic_cndtn_patnt_chrt.y_min,
-          max: glConst.glGraph.chronic_cndtn_patnt_chrt.y_max
         });
         
         chronicCndtnPatntChart.addSeries("HTN", new StoreSeries(glDataStore.HTN_hc_unav, { query: {} }, "mean"));
@@ -518,7 +448,7 @@ require([
           leftBottom: true,
           natural: true,
           fixed: true,
-          titleOrientation: "away"
+          titleOrientation: "away",
         });
         hcInsrncPatntChart.addAxis("y", {
           title: "Individuals",
@@ -526,8 +456,6 @@ require([
           leftBottom: true,
           natural: false,
           fixed: true,
-          min: glConst.glGraph.hc_insrnc_patnt_chrt.y_min,
-          max: glConst.glGraph.hc_insrnc_patnt_chrt.y_max
         });
         
         hcInsrncPatntChart.addSeries("Medicaid", new StoreSeries(glDataStore.Medicaid_unav, { query: {} }, "mean"));
@@ -552,106 +480,19 @@ require([
       var ApiURLInput = dom.byId("api_url");
       glConst.glApiURL = ApiURLInput.value;
       
-      var btnChngScenario = registry.byId("btn_chng_scenario");    
-      on(btnChngScenario, "click", function() {
-        var checkedRadioBtnId = getCheckedRadioButtonId("frm_selected_scenario");
-        var checkedRadioBtn = registry.byId(checkedRadioBtnId);
-        if(checkedRadioBtn) {
-          getDataFromAJAXRequest(checkedRadioBtn.get("value"),  glConst.chartVarArray); 
-
-          var tmpId = checkedRadioBtn.get("id");
-          dom.byId("tab_splash_page_scenario").innerHTML = glIdToLabelMap[tmpId];
-          dom.byId("tab_hc_demand_scenario").innerHTML = glIdToLabelMap[tmpId];
-          dom.byId("tab_practices_scenario").innerHTML = glIdToLabelMap[tmpId];
-          dom.byId("tab_patient_scenario").innerHTML = glIdToLabelMap[tmpId];
-          dom.byId("tab_about_page_scenario").innerHTML = glIdToLabelMap[tmpId];  
-          dom.byId("tab_team_page_scenario").innerHTML = glIdToLabelMap[tmpId];
-        } else {
-          console.log("Error: unable to find checked radio button on form, frm_selected_scenario.");
-        }
+      arrayUtil.forEach(glRadBtnIdArray, function(radBtnId, i) {
+        var radBtn = registry.byId(radBtnId);
+        on(radBtn, "change", function() {
+          if(radBtn.checked) {
+            getDataFromAJAXRequest(radBtn.get("value"), glConst.chartVarArray);
+            dom.byId("home_view_scenario").innerHTML = glIdToLabelMap[radBtnId];
+          }
+        });
       });
       
-      var btnChooseScenario = registry.byId("btn_chng_chsn_scenario");    
-      on(btnChooseScenario, "click", function() {
-        var vanCount = 0;
-        var capacityMultiplier = 1.0;
-        var radBtn = registry.byId("rb_mobile_van_true");
-        if(radBtn.checked) {
-          vanCount = parseInt(registry.byId("num_spn_mobile_van_cnt").get("value"));
-        }
-        radBtn = registry.byId("rb_exceed_cap_true");
-        if(radBtn.checked) {
-          capacityMultiplier = (parseInt(registry.byId("num_spn_exceed_cap_pct").get("value")) / 100.0) + 1.0;
-        }
-        
-        //base_param_id = 2 is for the HAZEL baseline parameters
-        var jsonObj = {params: {HAZEL_mobile_van_max: vanCount, HAZEL_disaster_capacity_multiplier: capacityMultiplier}, base_param_id: 2};
-        
-        findWebRunIdAndGetDataFromAJAXRequest(jsonObj);
-        
-        var innerHtml = "<span style=\"font-weight: bold;\">Custom:</span>&nbsp;{";
-        if(vanCount > 0) {
-          innerHtml += (vanCount +"&nbsp;Mobile&nbsp;Van" + (vanCount > 1 ? "s" : "") + "&nbsp;Active");
-        }
-        
-        if(capacityMultiplier > 1.0) {
-          spinner = registry.byId("num_spn_exceed_cap_pct");
-          innerHtml += (",&nbsp;" + spinner.get("value") + "&#37;&nbsp;Additional&nbsp;Capacity");
-        }
-        innerHtml += "}";
-        dom.byId("tab_splash_page_scenario").innerHTML = innerHtml;
-        dom.byId("tab_hc_demand_scenario").innerHTML = innerHtml;
-        dom.byId("tab_practices_scenario").innerHTML = innerHtml;
-        dom.byId("tab_patient_scenario").innerHTML = innerHtml;
-        dom.byId("tab_about_page_scenario").innerHTML = innerHtml; 
-        dom.byId("tab_team_page_scenario").innerHTML = innerHtml;
-      });
-      
-      var radBtnMobileVanTrue = registry.byId("rb_mobile_van_true");
-      on(radBtnMobileVanTrue, "change", function() {
-        if(radBtnMobileVanTrue.checked) {
-          registry.byId("num_spn_mobile_van_cnt").set("disabled", false);
-        }
-      });
-      
-      radBtnMobileVanFalse = registry.byId("rb_mobile_van_false");
-      on(radBtnMobileVanFalse, "change", function() {
-        if(radBtnMobileVanFalse.checked) {
-          registry.byId("num_spn_mobile_van_cnt").set("disabled", true);
-        }
-      });  
-      
-      var radBtnExceedCapTrue = registry.byId("rb_exceed_cap_true");
-      on(radBtnExceedCapTrue, "change", function() {
-        if(radBtnExceedCapTrue.checked) {
-          registry.byId("num_spn_exceed_cap_pct").set("disabled", false);
-        }
-      });
-      
-      radBtnExceedCapFalse = registry.byId("rb_exceed_cap_false");
-      on(radBtnExceedCapFalse, "change", function() {
-        if(radBtnExceedCapFalse.checked) {
-          registry.byId("num_spn_exceed_cap_pct").set("disabled", true);
-        }
-      });      
-    
-      var centerTabCntnr = registry.byId("center_tab_cntnr");
-      centerTabCntnr.watch("selectedChildWidget", function(name, oval, nval) {
-        if(nval === registry.byId("tab_panel_hc_demand")) {
-          makeHealthcareDemandTabCharts();
-        } else if(nval === registry.byId("tab_panel_practices")) {
-          makePracticeTabCharts();
-        } else if(nval === registry.byId("tab_panel_patient"))  {
-          makeAdditionalInformationTabCharts();
-        }        
-      });
-    
       //Load initial data
       getDataFromAJAXRequest("FRRN1", glConst.chartVarArray); 
 
     });
   }
 );
-
-
-

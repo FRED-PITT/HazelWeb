@@ -1,0 +1,7 @@
+# All Eclipse generated files
+.DS_Store
+.project
+
+# Vendor created libraries
+vendor/
+js/vendor/
